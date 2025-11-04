@@ -1,0 +1,11 @@
+﻿{
+  "name": "fastapi-calculator-e2e",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.48.2"
+  },
+  "scripts": {
+    "e2e:install": "npx playwright install --with-deps",
+    "e2e": "npx playwright test"
+  }
+}
