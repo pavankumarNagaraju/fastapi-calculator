@@ -7,6 +7,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Checkout
@@ -23,10 +25,19 @@ jobs:
           pip install -r requirements.txt
 
       - name: Pytest (unit + integration, with coverage)
-        run: pytest
+        run: pytest -q
 
-      - name: Upload coverage artifact
+      - name: Upload coverage artifact (if present)
         if: always()
+        run: |
+          if [ -f coverage.xml ]; then
+            echo "coverage exists"
+          else
+            echo "no coverage.xml produced" && exit 0
+          fi
+        shell: bash
+      - name: Upload coverage.xml
+        if: always() && hashFiles('coverage.xml') != ''
         uses: actions/upload-artifact@v4
         with:
           name: coverage-xml
@@ -40,15 +51,28 @@ jobs:
       - name: Install Playwright and browsers
         run: |
           npm ci || npm install
-          npm run e2e:install
+          npx playwright install --with-deps
 
       - name: Launch app in background
         run: |
-          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          sleep 3
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > uvicorn.log 2>&1 &
+          echo $! > uvicorn.pid
+          sleep 1
+          tail -n +1 -f uvicorn.log &
+
+      - name: Wait for health endpoint
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              echo "Server is up"; exit 0
+            fi
+            echo "Waiting for server... ($i)"
+            sleep 1
+          done
+          echo "Server did not become ready" && exit 1
 
       - name: Run Playwright E2E
-        run: npm run e2e
+        run: npx playwright test
 
       - name: Upload Playwright report (on failure)
         if: failure()
